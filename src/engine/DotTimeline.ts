@@ -59,7 +59,7 @@ export class DotTimeline {
   private originalLabel: string | null
   private originalLive: string | null
 
-  constructor(canvas: HTMLCanvasElement, options: { unit: Unit; events: TimelineEvent[] }) {
+  constructor(canvas: HTMLCanvasElement, options: { unit: Unit; events: Array<TimelineEvent & { order?: number }> }) {
     const context = canvas.getContext('2d')
     if (!context) throw new Error('A 2D canvas context is required')
     this.canvas = canvas
@@ -301,7 +301,7 @@ export class DotTimeline {
     if (key === this.viewKey) return
     this.viewKey = key
     this.canvas.setAttribute('aria-label',
-      `Timeline, ${displayDate(parseDate(range.from))} to ${displayDate(parseDate(range.to))}. Use arrow keys or Page Up and Page Down to explore; Home returns to today.`)
+      `Timeline, ${displayDate(parseDate(range.from))} to ${displayDate(parseDate(range.to))}. Use arrow keys or Page Up and Page Down to explore; Home returns to today. Enter or Space shows dot details; Escape hides them.`)
     this.viewListeners.forEach((callback) => callback(range))
   }
 
@@ -466,6 +466,24 @@ export class DotTimeline {
 
   private onKey = (event: KeyboardEvent): void => {
     if (event.altKey || event.ctrlKey || event.metaKey) return
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      this.clearHover()
+      return
+    }
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      this.cancelMotion()
+      const index = this.centerIndex
+      const row = this.row(index)
+      const col = index - this.firstIndex(row)
+      const rect = this.canvas.getBoundingClientRect()
+      this.emitHover(this.hitAt(
+        rect.left + this.gridLeft + col * this.cell,
+        rect.top + row * this.cell - this.offset,
+      ))
+      return
+    }
     const increments: Record<string, number> = {
       ArrowUp: -this.cell, ArrowDown: this.cell,
       ArrowLeft: -this.cell, ArrowRight: this.cell,
