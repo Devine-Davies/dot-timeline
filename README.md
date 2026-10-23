@@ -39,8 +39,10 @@ JavaScript Date range.
 
 - `src/engine/` — standalone `DotTimeline` engine, date arithmetic, and public types.
   It has no UI imports or runtime dependencies.
-- `src/main.ts` — plain DOM shell, event management, URL state, and persistence.
-- `src/style.css` — responsive layout, mobile overlay sheet, focus states, and fades.
+- `src/main.ts` — plain DOM shell, event management, URL state, persistence, and
+  Tailwind utility styling for the panel, controls, dialogs, and tooltips.
+- `src/style.css` — Tailwind theme, base accessibility styles, and native colour
+  input styling. `vite.config.ts` integrates Tailwind with the Vite build.
 - `public/library.json` — date-sorted library with a source URL for every entry.
 
 The engine exposes `setUnit`, `setEvents`, `scrollToDate`, `scrollToToday`,

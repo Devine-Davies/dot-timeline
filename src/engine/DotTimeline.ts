@@ -336,7 +336,7 @@ export class DotTimeline {
       const candidates = this.rangesForRow(row)
       if (((row % 2) + 2) % 2 === 0) {
         const date = this.start(this.clampIndex(this.firstIndex(row)))
-        ctx.fillStyle = '#656b65'
+        ctx.fillStyle = '#667085'
         ctx.textAlign = 'left'
         const label = this.unit === '1y' || this.unit === '5y'
           ? displayDate(date, true) : displayMonthYear(date)
@@ -348,23 +348,44 @@ export class DotTimeline {
         const x = this.gridLeft + col * this.cell
         const event = candidates.find((range) => index >= range.first && index <= range.last)?.event
         const isToday = index === this.todayIndex
-        const color = event?.color ?? (index < this.todayIndex ? '#889487' : '#b3bcaf')
+        const color = event?.color ?? (index < this.todayIndex ? '#292e35' : '#a8b2c1')
+        if (isToday) {
+          ctx.beginPath()
+          ctx.arc(x, y, Math.min(11, this.cell * 0.49), 0, Math.PI * 2)
+          ctx.fillStyle = '#dc38381a'
+          ctx.fill()
+        }
         ctx.beginPath()
         ctx.arc(x, y, isToday ? Math.min(6, this.cell * 0.38) : radius, 0, Math.PI * 2)
-        ctx.fillStyle = isToday ? '#237b64' : color
-        ctx.strokeStyle = isToday ? '#237b64' : color
-        if (index <= this.todayIndex) ctx.fill()
+        ctx.fillStyle = isToday ? '#dc3838' : color
+        ctx.strokeStyle = isToday ? '#dc3838' : color
+        if (index <= this.todayIndex || event) ctx.fill()
         else ctx.stroke()
         if (isToday) {
           ctx.save()
-          ctx.fillStyle = '#237b64'
+          ctx.font = '12px system-ui, sans-serif'
           ctx.textAlign = 'left'
-          const labelY = y - Math.max(12, this.cell * 0.65)
-          const label = `Today · ${displayDate(parseDate(this.today))}`
-          const maxWidth = Math.max(1, this.width - 16)
-          const labelWidth = Math.min(ctx.measureText(label).width, maxWidth)
-          const labelX = Math.max(8, Math.min(x, this.width - 8 - labelWidth))
-          ctx.fillText(label, labelX, Math.max(10, labelY), maxWidth)
+          const label = `Today  ${displayDate(parseDate(this.today))}`
+          const labelWidth = Math.min(ctx.measureText(label).width + 42, this.width - 16)
+          const labelX = Math.max(8, Math.min(x - labelWidth / 2, this.width - 8 - labelWidth))
+          const labelY = Math.max(8, y - 48)
+          ctx.shadowColor = '#1018280d'
+          ctx.shadowBlur = 12
+          ctx.shadowOffsetY = 4
+          ctx.beginPath()
+          ctx.roundRect(labelX, labelY, labelWidth, 32, 8)
+          ctx.fillStyle = '#ffffff'
+          ctx.fill()
+          ctx.shadowColor = 'transparent'
+          ctx.strokeStyle = '#e1e5eb'
+          ctx.lineWidth = 1
+          ctx.stroke()
+          ctx.beginPath()
+          ctx.arc(labelX + 15, labelY + 16, 4, 0, Math.PI * 2)
+          ctx.fillStyle = '#dc3838'
+          ctx.fill()
+          ctx.fillStyle = '#292e35'
+          ctx.fillText(label, labelX + 28, labelY + 16, Math.max(1, labelWidth - 36))
           ctx.restore()
         }
       }
