@@ -1,3 +1,3 @@
-export * from './types'
-export * from './dates'
-export { DotTimeline } from './DotTimeline'
+export * from './types.ts'
+export * from './dates.ts'
+export { DotTimeline } from './DotTimeline.ts'

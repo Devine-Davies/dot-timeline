@@ -5,7 +5,7 @@ week, fortnight, month, year, or five years.
 
 ## Run locally
 
-Use Node.js 22.12+ (or 20.19+) and npm.
+Use Node.js 22.12+ and npm.
 
 ```sh
 npm ci
@@ -13,7 +13,8 @@ npm run dev
 ```
 
 `npm run build` type-checks the app and creates `dist/`. Use `npm run preview` to
-preview the production build. There is no unit-test infrastructure, by design.
+preview the production build. Run `npm run check` for automated tests, architectural
+dependency checks, both type-checks, and a production build.
 
 ## Explore
 
@@ -35,21 +36,60 @@ numbering internally (year 0 = 1 BC); labels display the era. Approximate histor
 ranges in the library are labelled accordingly. Navigation is bounded only by the
 JavaScript Date range.
 
-## Structure
+## Architecture
 
-- `src/engine/` — standalone `DotTimeline` engine, date arithmetic, and public types.
-  It has no UI imports or runtime dependencies.
-- `src/main.ts` — plain DOM shell, event management, URL state, persistence, and
-  Tailwind utility styling for the panel, controls, dialogs, and tooltips.
-- `src/style.css` — Tailwind theme, base accessibility styles, and native colour
-  input styling. `vite.config.ts` integrates Tailwind with the Vite build.
-- `public/library.json` — date-sorted library with a source URL for every entry.
+The app follows clean architecture without a framework or a dependency-injection
+container. Source dependencies point inward; the domain and application can run
+without a browser.
 
-The engine exposes `setUnit`, `setEvents`, `scrollToDate`, `scrollToToday`,
-`onHover`, `onViewChange`, and `destroy`. Subscriptions return an unsubscribe
-function. Custom events and view preferences are stored with guarded
-`dt:v1:active`, `dt:v1:custom`, and `dt:v1:view` localStorage keys. There are no
-accounts, analytics, or backend services.
+| Layer | Responsibility | Allowed dependencies |
+| --- | --- | --- |
+| `src/domain/` | Event models, validation, priority, filtering, and UTC calendar arithmetic | Domain only |
+| `src/application/` | Event and view use cases; repository and location ports | Application and domain |
+| `src/infrastructure/` | localStorage, HTTP library loading, and URL/history adapters | Infrastructure, application, and domain |
+| `src/presentation/` | DOM controls, accessibility, date labels, and canvas rendering | Presentation, application, and domain |
+| `src/main.ts` | Composition root: construct adapters, inject clock/IDs, and mount presentation | All layers |
+
+`TimelineApplication` owns event and view state. Its use cases validate changes,
+maintain event ordering, and persist through interfaces declared in
+`application/ports.ts`. Tests supply in-memory implementations of those ports.
+Browser APIs and concrete adapters must never be imported into the inner layers.
+The DOM presenter calls application use cases, not storage or HTTP; it receives
+its canvas renderer from the composition root. Disposing the presenter releases
+subscriptions, global listeners, timers, and the renderer.
+
+`src/engine/` retains compatibility re-exports for the original standalone canvas
+API. New app code imports from the owning layer instead. `DotTimeline` still
+exposes `setUnit`, `setEvents`, `scrollToDate`, `scrollToToday`, `onHover`,
+`onViewChange`, and `destroy`; subscriptions return an unsubscribe function.
+
+`src/style.css` defines the Tailwind theme and base accessibility styles;
+`vite.config.ts` integrates Tailwind. `public/library.json` is the bundled,
+date-sorted catalogue with a source URL for every entry. The HTTP adapter rejects
+malformed catalogues explicitly instead of silently hiding invalid entries.
+
+Existing `dt:v1:active`, `dt:v1:custom`, and `dt:v1:view` localStorage keys remain
+compatible. Invalid saved entries are reported while valid entries are restored.
+Unavailable storage or restricted URL updates produce a warning without blocking
+the in-memory timeline. A failed library request does not discard saved library
+selections, and custom events remain usable. There are no accounts, analytics, or
+backend services.
+
+## Automated checks
+
+- `npm test` uses Node's built-in test runner and TypeScript stripping, with no
+  additional test framework. It covers calendar boundaries, event and view use
+  cases, persistence, HTTP/URL adapters, and the original engine exports.
+- Architecture tests inspect imports, type imports, and re-exports to enforce the
+  layer dependency rules and reject circular dependencies.
+- `npm run typecheck` checks the domain/application with no DOM or Vite types via
+  `tsconfig.core.json`, then checks the complete browser app.
+- `npm run check` runs all of the above plus the production build. GitHub Actions
+  runs it for pull requests and pushes to `main`.
+
+When extending the app, put business rules in the domain, coordinate them in
+application use cases, and adapt external APIs at the edges. Add a port only for
+an actual external dependency; keep DOM and canvas details in presentation.
 
 ## Deploy
 
