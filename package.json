@@ -9,13 +9,18 @@
   "scripts": {
     "dev": "vite",
     "build": "npm run typecheck && vite build",
-    "typecheck": "tsc -p tsconfig.core.json && tsc",
+    "typecheck": "tsc -p tsconfig.core.json && tsc && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
     "test": "node --experimental-strip-types --test",
     "check": "npm test && npm run build",
     "preview": "vite preview"
   },
+  "dependencies": {
+    "svelte": "^5.57.2"
+  },
   "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
     "@tailwindcss/vite": "^4.3.3",
+    "svelte-check": "^4.7.7",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.3",
     "vite": "^8.3.4"

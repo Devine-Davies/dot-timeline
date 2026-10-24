@@ -1,21 +1,22 @@
 import './style.css'
+import { mount, unmount } from 'svelte'
+import { writable } from 'svelte/store'
 import { TimelineApplication } from './application/TimelineApplication.ts'
 import { formatISO } from './domain/dates.ts'
 import { BrowserViewLocation } from './infrastructure/BrowserViewLocation.ts'
 import { HttpEventLibraryRepository } from './infrastructure/HttpEventLibraryRepository.ts'
 import { LocalStorageTimelineRepository } from './infrastructure/LocalStorageTimelineRepository.ts'
 import { DotTimeline } from './presentation/canvas/DotTimeline.ts'
-import { mountTimeline } from './presentation/mountTimeline.ts'
+import type { CreateTimelineRenderer } from './presentation/canvas/TimelineRenderer.ts'
+import App from './presentation/App.svelte'
 
 const root = document.querySelector<HTMLElement>('#app')
 if (!root) throw new Error('Missing application root')
 
-const pendingMessages: string[] = []
+const notifications = writable('')
 const report = (message: string): void => {
   console.warn(message)
-  const status = root.querySelector<HTMLElement>('#status')
-  if (status) status.textContent = message
-  else pendingMessages.push(message)
+  notifications.set(message)
 }
 
 const application = new TimelineApplication({
@@ -31,6 +32,13 @@ const application = new TimelineApplication({
   defaultPanelOpen: window.matchMedia('(min-width: 768px)').matches,
 })
 
-const destroy = mountTimeline(root, application, (canvas, unit) => new DotTimeline(canvas, { unit, events: [] }))
-if (pendingMessages.length) report(pendingMessages.join(' '))
-if (import.meta.hot) import.meta.hot.dispose(destroy)
+const createRenderer: CreateTimelineRenderer = (canvas, unit) => new DotTimeline(canvas, { unit, events: [] })
+const app = mount(App, {
+  target: root,
+  props: {
+    application,
+    notifications,
+    createRenderer,
+  },
+})
+if (import.meta.hot) import.meta.hot.dispose(() => { void unmount(app) })
