@@ -35,6 +35,9 @@ dependency checks, TypeScript/Svelte checks, and a production build.
   choose **Save and switch**, **Discard and switch**, or **Cancel** first.
 - Hover or tap a dot to see its full date span and overlapping events. With the
   grid focused, Enter / Space inspects the centre dot and Escape dismisses it.
+- Today's red dot stays visible, but its date label only appears when you hover
+  nearby, tap it, or inspect it with the keyboard, leaving surrounding dots clear.
+  The **Today** navigation button is always available to jump back.
 - Bookmark the URL (`?unit=1w&at=2026-10-23`) to keep a view. Events are saved only
   on this device, not in the link.
 

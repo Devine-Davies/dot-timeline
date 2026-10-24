@@ -62,7 +62,12 @@
 <div class="pointer-events-none absolute inset-x-0 bottom-0 z-2 h-20 bg-linear-to-t from-canvas via-canvas/80 to-transparent"></div>
 <div bind:this={tooltip} id="tooltip" class="pointer-events-none absolute z-6 max-w-[min(300px,calc(100%-16px))] rounded-lg bg-zinc-800 px-4 py-3 text-xs leading-6 text-white shadow-lg [&_strong]:font-medium [&_p]:mt-1 [&_p]:text-zinc-300 [&_p]:wrap-anywhere" role="tooltip" hidden={!hit || disabled} style:left="{tooltipX}px" style:top="{tooltipY}px">
   {#if hit}
-    <strong>{label(hit.start)} — {label(hit.end)}</strong>
+    {#if hit.today}
+      <strong class="flex items-center gap-2"><span class="size-2 rounded-full bg-red-500" aria-hidden="true"></span>Today · {label(hit.today)}</strong>
+      <p>{label(hit.start)} — {label(hit.end)}</p>
+    {:else}
+      <strong>{label(hit.start)} — {label(hit.end)}</strong>
+    {/if}
     <p>{hit.events.length ? hit.events.map((event) => event.name).join(' · ') : 'A little piece of time.'}</p>
   {/if}
 </div>
