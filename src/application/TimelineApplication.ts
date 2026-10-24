@@ -1,6 +1,7 @@
 import { isColor, isDate, isTimelineEvent, isUnit, normalizeActiveEvents, resolveEvents, searchEvents } from '../domain/events.ts'
 import { copyGroup, groupChangeCount, isGroupName } from '../domain/eventGroups.ts'
 import type { ActiveEvent, EventGroup, TimelineEvent, Unit, ViewState } from '../domain/timeline.ts'
+import { isZoom } from '../domain/timeline.ts'
 import type { EventLibraryRepository, TimelineRepository, ViewLocation } from './ports.ts'
 
 interface Dependencies {
@@ -56,11 +57,12 @@ export class TimelineApplication {
       unit: isUnit(unit) ? unit : '1w',
       centerDate: isDate(centerDate) ? centerDate : dependencies.today(),
       panelOpen: stored.view.panelOpen ?? dependencies.defaultPanelOpen,
+      zoomByUnit: { ...stored.view.zoomByUnit, ...(isZoom(query.zoom) ? { [isUnit(unit) ? unit : '1w']: query.zoom } : {}) },
     }
   }
 
   get active(): readonly Readonly<ActiveEvent>[] { return this.activeEvents }
-  get view(): Readonly<ViewState> { return this.viewState }
+  get view(): Readonly<ViewState> { return { ...this.viewState, zoomByUnit: { ...this.viewState.zoomByUnit } } }
   get groups(): EventGroup[] { return this.eventGroups.map(copyGroup) }
   get activeGroup(): EventGroup | undefined {
     const group = this.eventGroups.find((item) => item.id === this.activeGroupId)
@@ -212,16 +214,22 @@ export class TimelineApplication {
     this.viewState = { ...this.viewState, centerDate }
   }
 
+  setZoom(zoom: number): void {
+    if (!isZoom(zoom)) throw new RangeError(`Invalid timeline zoom: ${zoom}`)
+    this.viewState = { ...this.viewState, zoomByUnit: { ...this.viewState.zoomByUnit, [this.viewState.unit]: zoom } }
+  }
+
   setPanelOpen(panelOpen: boolean): void {
     this.viewState = { ...this.viewState, panelOpen }
     this.dependencies.repository.saveView(this.viewState)
   }
 
-  restoreLocation(): { unit?: Unit; centerDate?: string } {
+  restoreLocation(): { unit?: Unit; centerDate?: string; zoom?: number } {
     const query = this.dependencies.location.read()
-    const restored: { unit?: Unit; centerDate?: string } = {}
+    const restored: { unit?: Unit; centerDate?: string; zoom?: number } = {}
     if (isUnit(query.unit)) { restored.unit = query.unit; this.setUnit(query.unit) }
     if (isDate(query.centerDate)) { restored.centerDate = query.centerDate; this.setCenterDate(query.centerDate) }
+    if (isZoom(query.zoom)) { restored.zoom = query.zoom; this.setZoom(query.zoom) }
     return restored
   }
 

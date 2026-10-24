@@ -2,6 +2,7 @@ import type { StoredTimeline, TimelineRepository } from '../application/ports.ts
 import { isEventGroup } from '../domain/eventGroups.ts'
 import { isActiveEvent, isDate, isTimelineEvent, isUnit, normalizeActiveEvents } from '../domain/events.ts'
 import type { ActiveEvent, EventGroup, TimelineEvent, ViewState } from '../domain/timeline.ts'
+import { isZoom } from '../domain/timeline.ts'
 
 export class LocalStorageTimelineRepository implements TimelineRepository {
   private getStorage: () => Pick<Storage, 'getItem' | 'setItem'>
@@ -33,6 +34,16 @@ export class LocalStorageTimelineRepository implements TimelineRepository {
         if ('panelOpen' in storedView) {
           if (typeof storedView.panelOpen === 'boolean') view.panelOpen = storedView.panelOpen
           else this.invalidData()
+        }
+        if ('zoomByUnit' in storedView) {
+          if (!storedView.zoomByUnit || typeof storedView.zoomByUnit !== 'object' || Array.isArray(storedView.zoomByUnit)) this.invalidData()
+          else {
+            view.zoomByUnit = {}
+            for (const [unit, zoom] of Object.entries(storedView.zoomByUnit)) {
+              if (isUnit(unit) && isZoom(zoom)) view.zoomByUnit[unit] = zoom
+              else this.invalidData()
+            }
+          }
         }
       }
     }

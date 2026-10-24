@@ -28,7 +28,7 @@ function setup({ stored = {}, query = {}, load = async () => [event('one'), even
 
 test('startup uses injected defaults without browser dependencies', () => {
   const { app } = setup()
-  assert.deepEqual(app.view, { unit: '1w', centerDate: '2026-10-23', panelOpen: true })
+  assert.deepEqual(app.view, { unit: '1w', centerDate: '2026-10-23', panelOpen: true, zoomByUnit: {} })
   assert.deepEqual(app.active, [])
 })
 
@@ -37,7 +37,7 @@ test('valid URL state overrides saved preferences and saved panel state is prese
     stored: { view: { unit: '1y', centerDate: '2000-01-01', panelOpen: false } },
     query: { unit: '5y', centerDate: '-000026-01-01' },
   })
-  assert.deepEqual(app.view, { unit: '5y', centerDate: '-000026-01-01', panelOpen: false })
+  assert.deepEqual(app.view, { unit: '5y', centerDate: '-000026-01-01', panelOpen: false, zoomByUnit: {} })
   const invalid = setup({ query: { unit: 'other', centerDate: '2026-02-29' } }).app
   assert.equal(invalid.view.unit, '1w')
   assert.equal(invalid.view.centerDate, '2026-10-23')
@@ -163,6 +163,25 @@ test('view changes, debounced persistence, navigation, and flush use the injecte
   assert.deepEqual(saved().view, app.view)
   assert.throws(() => app.setUnit('invalid'), RangeError)
   assert.throws(() => app.setCenterDate('2026-02-29'), RangeError)
+})
+
+test('zoom is independent per unit, persisted, and restored from bookmarks without mutating saved preferences', () => {
+  const { app, saved, navigate } = setup({
+    stored: { view: { unit: '1y', zoomByUnit: { '1y': 40, '1m': 56 } } },
+    query: { unit: '1y', zoom: 64 },
+  })
+  assert.equal(app.view.zoomByUnit['1y'], 64)
+  app.setUnit('1m')
+  assert.equal(app.view.zoomByUnit['1m'], 56)
+  app.setZoom(60)
+  app.rememberView()
+  assert.deepEqual(saved().view.zoomByUnit, { '1y': 64, '1m': 60 })
+  app.view.zoomByUnit['1y'] = 12
+  assert.equal(app.view.zoomByUnit['1y'], 64)
+  navigate({ unit: '5y', zoom: 48 })
+  assert.deepEqual(app.restoreLocation(), { unit: '5y', zoom: 48 })
+  assert.equal(app.view.zoomByUnit['5y'], 48)
+  for (const zoom of [5, 73, NaN, Infinity]) assert.throws(() => app.setZoom(zoom), RangeError)
 })
 
 test('saved state round trips, and event query results cannot mutate the catalogue', async () => {

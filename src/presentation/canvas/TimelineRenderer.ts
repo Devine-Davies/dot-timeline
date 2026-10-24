@@ -2,7 +2,9 @@ import type { ResolvedEvent, Unit } from '../../domain/timeline.ts'
 import type { DotHit, ViewRange } from './types.ts'
 
 export interface TimelineRenderer {
-  setUnit(unit: Unit): void
+  setUnit(unit: Unit, zoom?: number): void
+  setZoom(size: number): void
+  fit(): void
   setEvents(events: ResolvedEvent[]): void
   scrollToDate(date: string, animate?: boolean): void
   scrollToToday(): void

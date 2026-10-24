@@ -21,6 +21,17 @@ dependency checks, TypeScript/Svelte checks, and a production build.
 - Scroll, drag, or focus the grid and use arrows / Page Up / Page Down.
 - Choose **Today**, or press Home on the grid, to return to the present.
 - Switch scales without losing the date at the centre.
+- Resize dots independently of the time scale with **−**, the pixel-size slider,
+  **+**, and **Fit**. With the grid focused, use **+ / −**, Ctrl/Command + scroll,
+  or a two-finger pinch. Zoom keeps the pointer's date in place where the row's
+  horizontal bounds allow it; controls and keys anchor at the screen centre.
+- Rows fit the available timeline width, up to 72 px cells, without horizontal
+  scrolling. Weekly rows can shrink to 6 px on a 360 px screen. On narrow
+  timelines the unit switch becomes a dropdown and zoom simplifies to **− / +**.
+- Below 40 px, dots stay plain; from 40 px they show short dates, and from 56 px
+  they show full dates and one bar for every overlapping event, in priority order.
+  Additional vertical space keeps large stacks of event bars clear of other rows.
+  Dot text chooses black or white to maintain at least 4.5:1 colour contrast.
 - Open **Events** to search the bundled library or create a personal date range.
 - Hide, recolour, remove, or reorder events. The highest visible event wins when
   ranges overlap; arrow buttons provide a keyboard alternative to dragging.
@@ -35,10 +46,11 @@ dependency checks, TypeScript/Svelte checks, and a production build.
   choose **Save and switch**, **Discard and switch**, or **Cancel** first.
 - Hover or tap a dot to see its full date span and overlapping events. With the
   grid focused, Enter / Space inspects the centre dot and Escape dismisses it.
-- Today's red dot stays visible, but its date label only appears when you hover
-  nearby, tap it, or inspect it with the keyboard, leaving surrounding dots clear.
+- Today's larger red dot has a floating date label when it is in the unobstructed
+  part of the timeline. Hover, tap, or inspect it with the keyboard for details.
   The **Today** navigation button is always available to jump back.
-- Bookmark the URL (`?unit=1w&at=2026-10-23`) to keep a view. Events are saved only
+- Bookmark the URL (`?unit=1y&at=1945&zoom=64`) to keep a view, including dot size.
+  Full ISO dates are also supported. Events are saved only
   on this device, not in the link.
 
 All calendar calculations use UTC, Monday-start weeks, and inclusive event dates.
@@ -47,6 +59,8 @@ month, year, and five-year boundaries. Historical dates use astronomical ISO yea
 numbering internally (year 0 = 1 BC); labels display the era. Approximate historical
 ranges in the library are labelled accordingly. Navigation is bounded only by the
 JavaScript Date range.
+Month rows begin in January, year rows at the start of a decade, and five-year
+rows at the start of a century.
 
 ## Architecture
 
@@ -93,6 +107,8 @@ remain separate from the saved group and survive reloads. Groups also retain
 copies of their custom events so loading or discarding can restore an event
 deleted from the personal library. Groups, like events, stay on this device and
 are not included in shared URLs.
+The view also stores zoom per unit; existing views without zoom still load and
+fit automatically. A bookmarked zoom overrides only the selected unit's size.
 Invalid saved entries are reported while valid entries are restored.
 Unavailable storage or restricted URL updates produce a warning without blocking
 the in-memory timeline. A failed library request does not discard saved library
@@ -105,6 +121,10 @@ backend services.
   additional test framework. It covers calendar boundaries, event and view use
   cases, persistence, HTTP/URL adapters, and the original engine exports. It also
   compiles every Svelte component without accessibility or reactivity warnings.
+- Renderer regressions cover zoom limits and detail thresholds, pointer and
+  centre anchoring, pinch and keyboard input, narrow layouts, calendar-aligned
+  rows, overlapping event bars, resize preservation, and text contrast. Adapter
+  and application tests cover zoom persistence and bookmarked views.
 - Architecture tests inspect TypeScript and Svelte imports, type imports,
   re-exports, and template imports to enforce layer dependency rules and reject
   circular dependencies. Only presentation may import Svelte.
