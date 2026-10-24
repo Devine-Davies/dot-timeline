@@ -134,7 +134,7 @@ test('HTTP errors, malformed payloads, invalid events, duplicates, and missing s
 test('URL adapter reads bookmarks and replaces only timeline query parameters', () => {
   let current = 'https://example.com/timeline/?theme=dark&unit=1y&at=2000-01-01#details'
   const adapter = new BrowserViewLocation(() => current, (url) => { current = url.href }, assert.fail)
-  assert.deepEqual(adapter.read(), { unit: '1y', centerDate: '2000-01-01' })
+  assert.deepEqual(adapter.read(), { unit: '1y', centerDate: '2000-01-01', zoom: null })
   adapter.write(view)
   const url = new URL(current)
   assert.equal(url.searchParams.get('theme'), 'dark')
@@ -152,4 +152,23 @@ test('restricted history updates are reported once without blocking the current 
   adapter.write(view)
   assert.equal(warnings.length, 1)
   assert.match(warnings[0], /could not update/)
+})
+
+test('zoom preferences round trip and invalid zoom entries do not discard valid units', () => {
+  const { repository, values, warnings } = storage()
+  repository.saveView({ ...view, zoomByUnit: { '1y': 64, '1w': 6 } })
+  assert.deepEqual(repository.load().view.zoomByUnit, { '1y': 64, '1w': 6 })
+  values.set('dt:v1:view', JSON.stringify({ ...view, zoomByUnit: { '1y': 40, '1w': 5, '2w': '24', 'other': 64 } }))
+  assert.deepEqual(repository.load().view.zoomByUnit, { '1y': 40 })
+  assert.equal(warnings.length, 1)
+})
+
+test('bookmarks accept a year-only centre and include the zoom for the selected unit', () => {
+  let current = 'https://example.com/?unit=1y&at=1945&zoom=64'
+  const adapter = new BrowserViewLocation(() => current, (url) => { current = url.href }, assert.fail)
+  assert.deepEqual(adapter.read(), { unit: '1y', centerDate: '1945-01-01', zoom: 64 })
+  adapter.write({ ...view, zoomByUnit: { '1m': 56, '1y': 64 } })
+  assert.equal(new URL(current).searchParams.get('zoom'), '56')
+  adapter.write(view)
+  assert.equal(new URL(current).searchParams.has('zoom'), false)
 })

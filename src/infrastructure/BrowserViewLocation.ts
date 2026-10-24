@@ -13,15 +13,20 @@ export class BrowserViewLocation implements ViewLocation {
     this.report = report
   }
 
-  read(): { unit: string | null; centerDate: string | null } {
+  read(): { unit: string | null; centerDate: string | null; zoom: number | null } {
     const params = new URL(this.currentUrl()).searchParams
-    return { unit: params.get('unit'), centerDate: params.get('at') }
+    const at = params.get('at')
+    const centerDate = at && /^\d{4}$/.test(at) ? `${at}-01-01` : at
+    return { unit: params.get('unit'), centerDate, zoom: params.has('zoom') ? Number(params.get('zoom')) : null }
   }
 
   write(view: Readonly<ViewState>): void {
     const url = new URL(this.currentUrl())
     url.searchParams.set('unit', view.unit)
     url.searchParams.set('at', view.centerDate)
+    const zoom = view.zoomByUnit?.[view.unit]
+    if (zoom !== undefined) url.searchParams.set('zoom', String(zoom))
+    else url.searchParams.delete('zoom')
     try { this.replaceUrl(url) }
     catch {
       if (this.warned) return

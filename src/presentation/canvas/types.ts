@@ -14,4 +14,9 @@ export interface ViewRange {
   from: string
   to: string
   centerDate: string
+  cellSize: number
+  minCellSize: number
+  maxCellSize: number
+  height: number
+  today: { x: number; y: number; date: string }
 }

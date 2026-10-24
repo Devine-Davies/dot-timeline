@@ -20,6 +20,6 @@ export interface EventLibraryRepository {
 }
 
 export interface ViewLocation {
-  read(): { unit: string | null; centerDate: string | null }
+  read(): { unit: string | null; centerDate: string | null; zoom?: number | null }
   write(view: Readonly<ViewState>): void
 }
