@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { InvalidCustomEventError, TimelineApplication } from '../src/application/TimelineApplication.ts'
+import { InvalidCustomEventError, InvalidGroupNameError, TimelineApplication, UnsavedGroupChangesError } from '../src/application/TimelineApplication.ts'
 
 const event = (id, overrides = {}) => ({
   id, name: id, start: '2026-01-01', end: '2026-12-31', color: '#123456', category: 'history', ...overrides,
@@ -8,7 +8,7 @@ const event = (id, overrides = {}) => ({
 const active = (eventId, order = 0) => ({ eventId, color: '#abcdef', visible: true, order })
 
 function setup({ stored = {}, query = {}, load = async () => [event('one'), event('two'), event('three')] } = {}) {
-  let saved = { active: [], custom: [], view: {}, ...structuredClone(stored) }
+  let saved = { active: [], custom: [], view: {}, groups: [], activeGroupId: null, ...structuredClone(stored) }
   let location = { unit: null, centerDate: null, ...query }
   const writes = []
   let id = 0
@@ -16,6 +16,7 @@ function setup({ stored = {}, query = {}, load = async () => [event('one'), even
     load: () => structuredClone(saved),
     saveEvents: (active, custom) => { saved = { ...saved, active: structuredClone(active), custom: structuredClone(custom) } },
     saveView: (view) => { saved = { ...saved, view: structuredClone(view) } },
+    saveGroups: (groups, activeGroupId) => { saved = { ...saved, groups: structuredClone(groups), activeGroupId } },
   }
   const app = new TimelineApplication({
     repository, library: { load },
@@ -178,4 +179,187 @@ test('saved state round trips, and event query results cannot mutate the catalog
   found.name = 'Changed'
   second.searchEvents('all', '')[0].name = 'Changed too'
   assert.equal(second.eventById('one').name, 'one')
+})
+
+test('saving a group snapshots order, colours, visibility and custom events, and activates by default', async () => {
+  const { app, saved } = setup()
+  await app.loadLibrary()
+  app.addEvent('one')
+  app.addEvent('two')
+  app.setEventColor('two', '#112233')
+  app.toggleEventVisibility('one')
+  app.reorderEvent('two', -1)
+  const custom = app.createCustomEvent({ name: 'My chapter', start: '2000-01-01', end: '2001-01-01', color: '#456789' })
+  const group = app.saveGroup('  Big events  ')
+  assert.equal(group.name, 'Big events')
+  assert.equal(group.savedAt, '2026-10-23')
+  assert.deepEqual(group.events, app.active)
+  assert.deepEqual(group.custom, [custom])
+  assert.equal(app.activeGroup.id, group.id)
+  assert.equal(saved().activeGroupId, group.id)
+  assert.equal(app.groupChanges, 0)
+  app.setEventColor('two', '#ffffff')
+  assert.equal(group.events[0].color, '#112233')
+  assert.equal(saved().groups[0].events[0].color, '#112233')
+})
+
+test('group names are validated atomically and empty timelines cannot be saved as new groups', async () => {
+  const { app } = setup()
+  assert.throws(() => app.saveGroup('Empty'), RangeError)
+  await app.loadLibrary()
+  app.addEvent('one')
+  for (const name of ['', '   ', 'x'.repeat(121)]) assert.throws(() => app.saveGroup(name), InvalidGroupNameError)
+  assert.deepEqual(app.groups, [])
+  app.saveGroup('Valid')
+  assert.throws(() => app.renameGroup('  '), InvalidGroupNameError)
+  assert.equal(app.activeGroup.name, 'Valid')
+})
+
+test('saving without activation preserves the current group, and renaming does not save edits', async () => {
+  const { app } = setup()
+  await app.loadLibrary()
+  app.addEvent('one')
+  const inactive = app.saveGroup('Inactive', false)
+  assert.equal(app.activeGroup, undefined)
+  app.selectGroup(inactive.id)
+  app.addEvent('two')
+  const alternate = app.saveGroup('Alternate', false)
+  assert.equal(app.activeGroup.id, inactive.id)
+  assert.equal(app.groupChanges, 1)
+  app.renameGroup('  Renamed  ')
+  assert.equal(app.activeGroup.name, 'Renamed')
+  assert.equal(app.groupChanges, 1)
+  assert.equal(app.groups.find((group) => group.id === alternate.id).events.length, 2)
+})
+
+test('dirty groups count additions, removals, colour, visibility and relative reordering, and clear on undo', async () => {
+  const { app } = setup()
+  await app.loadLibrary()
+  app.addEvent('one')
+  app.addEvent('two')
+  app.saveGroup('Original')
+  app.addEvent('three')
+  assert.equal(app.groupChanges, 1)
+  app.removeEvent('three')
+  assert.equal(app.groupChanges, 0)
+  app.reorderEvent('two', -1)
+  assert.equal(app.groupChanges, 1)
+  app.reorderEvent('two', 1)
+  assert.equal(app.groupChanges, 0)
+  app.setEventColor('one', '#ffffff')
+  app.toggleEventVisibility('two')
+  assert.equal(app.groupChanges, 2)
+  app.updateGroup()
+  assert.equal(app.groupChanges, 0)
+  assert.equal(app.activeGroup.events[0].color, '#ffffff')
+  assert.equal(app.activeGroup.events[1].visible, false)
+  app.removeEvent('one')
+  assert.equal(app.groupChanges, 1)
+  app.discardGroupChanges()
+  assert.equal(app.groupChanges, 0)
+  assert.deepEqual(app.active, app.activeGroup.events)
+})
+
+test('switching an edited group requires an explicit save or discard decision, while selecting itself is safe', async () => {
+  const { app } = setup()
+  await app.loadLibrary()
+  app.addEvent('one')
+  const first = app.saveGroup('First')
+  app.addEvent('two')
+  const second = app.saveGroup('Second')
+  app.setEventColor('two', '#aabbcc')
+  assert.throws(() => app.selectGroup(first.id), UnsavedGroupChangesError)
+  assert.equal(app.activeGroup.id, second.id)
+  assert.equal(app.active[1].color, '#aabbcc')
+  app.selectGroup(second.id)
+  assert.equal(app.groupChanges, 1)
+  assert.throws(() => app.selectGroup('missing', 'save'), RangeError)
+  assert.equal(app.groupChanges, 1)
+  app.selectGroup(first.id, 'save')
+  assert.deepEqual(app.active.map((item) => item.eventId), ['one'])
+  app.selectGroup(second.id)
+  assert.equal(app.active[1].color, '#aabbcc')
+  app.removeEvent('two')
+  app.selectGroup(first.id, 'discard')
+  app.selectGroup(second.id)
+  assert.deepEqual(app.active.map((item) => item.eventId), ['one', 'two'])
+})
+
+test('groups and dirty working selections survive reload, without exposing mutable snapshots', async () => {
+  const { app, saved } = setup()
+  await app.loadLibrary()
+  app.addEvent('one')
+  const first = app.saveGroup('First')
+  app.addEvent('two')
+  app.flush()
+  const second = setup({ stored: saved() }).app
+  await second.loadLibrary()
+  assert.equal(second.activeGroup.id, first.id)
+  assert.equal(second.groupChanges, 1)
+  const groups = second.groups
+  groups[0].events[0].color = '#000000'
+  second.activeGroup.name = 'Overwritten'
+  assert.equal(second.activeGroup.name, 'First')
+  assert.equal(second.activeGroup.events[0].color, '#123456')
+  second.discardGroupChanges()
+  assert.deepEqual(second.active.map((item) => item.eventId), ['one'])
+})
+
+test('discard and group activation restore saved custom events after deletion, including offline', async () => {
+  const { app, saved } = setup({ load: async () => { throw new Error('Offline') } })
+  await assert.rejects(app.loadLibrary(), /Offline/)
+  const custom = app.createCustomEvent({ name: 'Offline chapter', start: '2000-01-01', end: '2001-01-01', color: '#123456' })
+  const group = app.saveGroup('Personal')
+  app.deleteCustomEvent(custom.id)
+  assert.equal(app.groupChanges, 1)
+  app.discardGroupChanges()
+  assert.equal(app.eventById(custom.id).name, custom.name)
+  app.leaveGroup()
+  app.deleteCustomEvent(custom.id)
+  app.selectGroup(group.id)
+  assert.equal(app.active[0].eventId, custom.id)
+  assert.equal(saved().custom.length, 1)
+  app.activeGroup.custom[0].name = 'Changed copy'
+  assert.equal(app.activeGroup.custom[0].name, custom.name)
+})
+
+test('leaving and deleting groups keep current events and custom definitions, even with edits', async () => {
+  const { app, saved } = setup()
+  await app.loadLibrary()
+  app.addEvent('one')
+  const first = app.saveGroup('First')
+  app.addEvent('two')
+  const working = structuredClone(app.active)
+  app.leaveGroup()
+  assert.equal(app.activeGroup, undefined)
+  assert.equal(app.groupChanges, 0)
+  assert.deepEqual(app.active, working)
+  assert.equal(app.groups.length, 1)
+  app.selectGroup(first.id)
+  app.addEvent('three')
+  const custom = app.createCustomEvent({ name: 'Keep me', start: '2000-01-01', end: '2001-01-01', color: '#123456' })
+  const beforeDelete = structuredClone(app.active)
+  app.deleteGroup()
+  assert.deepEqual(app.active, beforeDelete)
+  assert.ok(app.eventById(custom.id))
+  assert.deepEqual(saved().groups, [])
+  assert.equal(saved().activeGroupId, null)
+  for (const action of [() => app.updateGroup(), () => app.discardGroupChanges(), () => app.leaveGroup(), () => app.deleteGroup()]) {
+    assert.throws(action, RangeError)
+  }
+})
+
+test('removing all events can update an existing group to an empty saved selection', async () => {
+  const { app } = setup()
+  await app.loadLibrary()
+  app.addEvent('one')
+  const group = app.saveGroup('Empty later')
+  app.removeEvent('one')
+  app.updateGroup()
+  assert.deepEqual(app.activeGroup.events, [])
+  assert.equal(app.groupChanges, 0)
+  app.leaveGroup()
+  app.addEvent('two')
+  app.selectGroup(group.id)
+  assert.deepEqual(app.active, [])
 })

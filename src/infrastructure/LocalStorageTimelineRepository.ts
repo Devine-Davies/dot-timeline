@@ -1,6 +1,7 @@
 import type { StoredTimeline, TimelineRepository } from '../application/ports.ts'
+import { isEventGroup } from '../domain/eventGroups.ts'
 import { isActiveEvent, isDate, isTimelineEvent, isUnit, normalizeActiveEvents } from '../domain/events.ts'
-import type { ActiveEvent, TimelineEvent, ViewState } from '../domain/timeline.ts'
+import type { ActiveEvent, EventGroup, TimelineEvent, ViewState } from '../domain/timeline.ts'
 
 export class LocalStorageTimelineRepository implements TimelineRepository {
   private getStorage: () => Pick<Storage, 'getItem' | 'setItem'>
@@ -35,7 +36,25 @@ export class LocalStorageTimelineRepository implements TimelineRepository {
         }
       }
     }
-    return { custom, active: normalizeActiveEvents(active), view }
+    const storedGroups = this.read('groups')
+    const groups: EventGroup[] = []
+    let activeGroupId: string | null = null
+    if (storedGroups !== null) {
+      if (typeof storedGroups !== 'object' || !('groups' in storedGroups) || !Array.isArray(storedGroups.groups)) this.invalidData()
+      else {
+        const seen = new Set<string>()
+        for (const group of storedGroups.groups) {
+          if (!isEventGroup(group) || seen.has(group.id)) { this.invalidData(); continue }
+          seen.add(group.id)
+          groups.push({ ...group, events: normalizeActiveEvents(group.events) })
+        }
+        if ('activeGroupId' in storedGroups && storedGroups.activeGroupId !== null) {
+          if (typeof storedGroups.activeGroupId === 'string' && seen.has(storedGroups.activeGroupId)) activeGroupId = storedGroups.activeGroupId
+          else this.invalidData()
+        }
+      }
+    }
+    return { custom, active: normalizeActiveEvents(active), view, groups, activeGroupId }
   }
 
   saveEvents(active: readonly ActiveEvent[], custom: readonly TimelineEvent[]): void {
@@ -44,6 +63,10 @@ export class LocalStorageTimelineRepository implements TimelineRepository {
   }
 
   saveView(view: Readonly<ViewState>): void { this.write('view', view) }
+
+  saveGroups(groups: readonly EventGroup[], activeGroupId: string | null): void {
+    this.write('groups', { groups, activeGroupId })
+  }
 
   private read(key: string): unknown {
     let raw: string | null

@@ -5,7 +5,7 @@
   import { UNIT_SPECS, type TimelineEvent, type Unit } from '../domain/timeline.ts'
   import type { CreateTimelineRenderer } from './canvas/TimelineRenderer.ts'
   import type { ViewRange } from './canvas/types.ts'
-  import type { ActiveEventEntry, EventActions } from './eventPanelTypes.ts'
+  import type { ActiveEventEntry, EventActions, GroupActions } from './eventPanelTypes.ts'
   import CustomEventDialog from './components/CustomEventDialog.svelte'
   import EventsPanel from './components/EventsPanel.svelte'
   import HelpDialog from './components/HelpDialog.svelte'
@@ -28,6 +28,12 @@
       activeIds: application.active.map((item) => item.eventId),
       catalogue: application.searchEvents('all', ''),
       overlays: application.resolvedEvents(),
+      groups: application.groups,
+      activeGroup: application.activeGroup,
+      groupChanges: application.groupChanges,
+      groupPreview: application.active.map((item) => ({
+        id: item.eventId, name: application.eventById(item.eventId)?.name ?? `Unavailable event (${item.eventId})`, color: item.color,
+      })),
     }
   }
 
@@ -66,6 +72,24 @@
       return true
     },
     goTo(date) { canvas.scrollToDate(date, true) },
+  }
+
+  const groupActions: GroupActions = {
+    save(name, makeActive) {
+      const group = application.saveGroup(name, makeActive)
+      refreshEvents()
+      announce(`${group.name} saved${makeActive ? ' and active' : ''}.`)
+    },
+    select(id, changes) {
+      application.selectGroup(id, changes)
+      refreshEvents()
+      announce(`${application.activeGroup!.name} loaded. Timeline events replaced.`)
+    },
+    update() { application.updateGroup(); refreshEvents(); announce('Group updated.') },
+    rename(name) { application.renameGroup(name); refreshEvents(); announce('Group renamed.') },
+    discard() { application.discardGroupChanges(); refreshEvents(); announce('Changes discarded. Saved group restored.') },
+    leave() { application.leaveGroup(); refreshEvents(); announce('Group left. Your timeline events are unchanged.') },
+    delete() { application.deleteGroup(); refreshEvents(); announce('Group deleted. Your timeline events are unchanged.') },
   }
 
   async function setPanel(open: boolean): Promise<void> {
@@ -138,7 +162,7 @@
 <svelte:window onpopstate={restoreLocation} onpagehide={() => application.flush()} />
 
 <div class="flex h-dvh w-full overflow-hidden">
-  <EventsPanel bind:this={panel} open={view.panelOpen} {mobile} {modalOpen} entries={events.entries} activeIds={events.activeIds} catalogue={events.catalogue} {libraryState} {actions} onclose={() => setPanel(false)} oncreate={() => customDialog.open()} />
+  <EventsPanel bind:this={panel} open={view.panelOpen} {mobile} {modalOpen} entries={events.entries} activeIds={events.activeIds} catalogue={events.catalogue} {libraryState} {actions} groups={events.groups} activeGroup={events.activeGroup} groupChanges={events.groupChanges} groupPreview={events.groupPreview} {groupActions} onmodalchange={(open) => { modalOpen = open }} onclose={() => setPanel(false)} oncreate={() => customDialog.open()} />
   <button id="backdrop" type="button" tabindex="-1" aria-label="Close event panel" class="fixed inset-0 z-15 bg-ink/25 backdrop-blur-xs" hidden={!(view.panelOpen && mobile)} onclick={() => setPanel(false)}></button>
   <main id="timeline-area" class="@container relative h-full min-w-0 flex-1 overflow-hidden bg-canvas" inert={view.panelOpen && mobile}>
     <header class="pointer-events-none absolute inset-x-4 top-5 z-3 flex items-center justify-between gap-2 lg:inset-x-8 lg:top-7">

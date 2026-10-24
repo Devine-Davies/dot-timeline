@@ -1,14 +1,15 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import { searchEvents } from '../../domain/events.ts'
-  import { CATEGORIES, type TimelineEvent } from '../../domain/timeline.ts'
-  import type { ActiveEventEntry, EventActions } from '../eventPanelTypes.ts'
+  import { CATEGORIES, type EventGroup, type TimelineEvent } from '../../domain/timeline.ts'
+  import type { ActiveEventEntry, EventActions, GroupActions, GroupEventPreview } from '../eventPanelTypes.ts'
   import { iconButton } from '../styles.ts'
   import ActiveEvents from './ActiveEvents.svelte'
   import EventLibrary from './EventLibrary.svelte'
+  import EventGroups from './EventGroups.svelte'
   import Icon from './Icon.svelte'
 
-  let { open, mobile, modalOpen, entries, activeIds, catalogue, libraryState, actions, onclose, oncreate }: {
+  let { open, mobile, modalOpen, entries, activeIds, catalogue, libraryState, actions, groups, activeGroup, groupChanges, groupPreview, groupActions, onmodalchange, onclose, oncreate }: {
     open: boolean
     mobile: boolean
     modalOpen: boolean
@@ -17,6 +18,12 @@
     catalogue: TimelineEvent[]
     libraryState: 'loading' | 'ready' | 'error'
     actions: EventActions
+    groups: EventGroup[]
+    activeGroup: EventGroup | undefined
+    groupChanges: number
+    groupPreview: GroupEventPreview[]
+    groupActions: GroupActions
+    onmodalchange: (open: boolean) => void
     onclose: () => void
     oncreate: () => void
   } = $props()
@@ -24,6 +31,7 @@
   let closeButton: HTMLButtonElement
   let createButton: HTMLButtonElement
   let activeList: { focusEvent(id: string): void }
+  let groupControls: { closePopup(): boolean }
   let search = $state('')
   let category = $state('all')
   let results = $derived(searchEvents(catalogue, category, search))
@@ -32,7 +40,11 @@
 
   function handleKeydown(event: KeyboardEvent): void {
     if (!open || modalOpen) return
-    if (event.key === 'Escape') { onclose(); return }
+    if (event.key === 'Escape') {
+      if (groupControls.closePopup()) { event.preventDefault(); return }
+      onclose()
+      return
+    }
     if (event.key !== 'Tab' || !mobile) return
     const focusable = [...panel.querySelectorAll<HTMLElement>('button:not(:disabled), input, a[href]')]
       .filter((element) => element.getClientRects().length > 0)
@@ -68,8 +80,8 @@
       {/each}
     </div>
     <section class="border-b border-line pb-5" aria-labelledby="active-title">
-      <div class="mb-2 flex items-center justify-between"><h2 id="active-title" class="text-sm font-semibold">On your timeline</h2><span id="active-count" class="font-mono text-xs text-muted">{activeIds.length}</span></div>
-      <ActiveEvents bind:this={activeList} {entries} count={activeIds.length} {actions} onemptyfocus={() => createButton.focus()} />
+      <EventGroups bind:this={groupControls} {groups} {activeGroup} changes={groupChanges} preview={groupPreview} count={activeIds.length} panelOpen={open} actions={groupActions} onopenchange={onmodalchange} />
+      <ActiveEvents bind:this={activeList} {entries} count={activeIds.length} newIds={activeGroup ? activeIds.filter((id) => !activeGroup.events.some((event) => event.eventId === id)) : []} {actions} onemptyfocus={() => createButton.focus()} />
       <p id="active-empty" class="py-5 text-sm leading-6 text-muted" hidden={activeIds.length > 0}>No events yet. Add one from the library<br />or create something of your own.</p>
     </section>
     <section class="py-5" aria-labelledby="library-title">

@@ -24,6 +24,15 @@ dependency checks, TypeScript/Svelte checks, and a production build.
 - Open **Events** to search the bundled library or create a personal date range.
 - Hide, recolour, remove, or reorder events. The highest visible event wins when
   ranges overlap; arrow buttons provide a keyboard alternative to dragging.
+- Use the group picker in **On your timeline** to save and switch between named
+  event groups. Groups remember event order, colours and visibility. The save
+  dialog previews the ordered events and makes the group active by default.
+- While a group is active, an **Edited** badge tracks changes and newly added
+  events are marked **New**. Its **Manage active group** menu lets you update,
+  save a copy, rename, discard changes, leave the group, or delete it. Leaving or
+  deleting a group keeps the current timeline events.
+- Switching groups replaces the current events. For an edited active group,
+  choose **Save and switch**, **Discard and switch**, or **Cancel** first.
 - Hover or tap a dot to see its full date span and overlapping events. With the
   grid focused, Enter / Space inspects the centre dot and Escape dismisses it.
 - Bookmark the URL (`?unit=1w&at=2026-10-23`) to keep a view. Events are saved only
@@ -76,7 +85,12 @@ date-sorted catalogue with a source URL for every entry. The HTTP adapter reject
 malformed catalogues explicitly instead of silently hiding invalid entries.
 
 Existing `dt:v1:active`, `dt:v1:custom`, and `dt:v1:view` localStorage keys remain
-compatible. Invalid saved entries are reported while valid entries are restored.
+compatible. Groups and the active group association use `dt:v1:groups`; edits
+remain separate from the saved group and survive reloads. Groups also retain
+copies of their custom events so loading or discarding can restore an event
+deleted from the personal library. Groups, like events, stay on this device and
+are not included in shared URLs.
+Invalid saved entries are reported while valid entries are restored.
 Unavailable storage or restricted URL updates produce a warning without blocking
 the in-memory timeline. A failed library request does not discard saved library
 selections, and custom events remain usable. There are no accounts, analytics, or
