@@ -19,6 +19,14 @@ export interface ActiveEvent {
   order: number
 }
 
+export interface EventGroup {
+  id: string
+  name: string
+  savedAt: string
+  events: ActiveEvent[]
+  custom: TimelineEvent[]
+}
+
 export interface ViewState {
   unit: Unit
   centerDate: string

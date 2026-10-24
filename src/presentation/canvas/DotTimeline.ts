@@ -360,33 +360,6 @@ export class DotTimeline {
         ctx.strokeStyle = isToday ? '#dc3838' : color
         if (index <= this.todayIndex || event) ctx.fill()
         else ctx.stroke()
-        if (isToday) {
-          ctx.save()
-          ctx.font = '12px system-ui, sans-serif'
-          ctx.textAlign = 'left'
-          const label = `Today  ${displayDate(parseDate(this.today))}`
-          const labelWidth = Math.min(ctx.measureText(label).width + 42, this.width - 16)
-          const labelX = Math.max(8, Math.min(x - labelWidth / 2, this.width - 8 - labelWidth))
-          const labelY = Math.max(8, y - 48)
-          ctx.shadowColor = '#1018280d'
-          ctx.shadowBlur = 12
-          ctx.shadowOffsetY = 4
-          ctx.beginPath()
-          ctx.roundRect(labelX, labelY, labelWidth, 32, 8)
-          ctx.fillStyle = '#ffffff'
-          ctx.fill()
-          ctx.shadowColor = 'transparent'
-          ctx.strokeStyle = '#e1e5eb'
-          ctx.lineWidth = 1
-          ctx.stroke()
-          ctx.beginPath()
-          ctx.arc(labelX + 15, labelY + 16, 4, 0, Math.PI * 2)
-          ctx.fillStyle = '#dc3838'
-          ctx.fill()
-          ctx.fillStyle = '#292e35'
-          ctx.fillText(label, labelX + 28, labelY + 16, Math.max(1, labelWidth - 36))
-          ctx.restore()
-        }
       }
     }
   }
@@ -405,6 +378,7 @@ export class DotTimeline {
     const candidates = this.rowLookup.get(row) ?? this.ranges
     return {
       index, start: formatISO(this.start(index)), end: formatISO(this.end(index)),
+      today: index === this.todayIndex ? this.today : undefined,
       events: candidates.filter((range) => index >= range.first && index <= range.last).map((range) => ({ ...range.event })),
       x: dotX, y: dotY,
     }

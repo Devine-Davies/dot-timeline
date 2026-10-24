@@ -1,5 +1,6 @@
 import { isColor, isDate, isTimelineEvent, isUnit, normalizeActiveEvents, resolveEvents, searchEvents } from '../domain/events.ts'
-import type { ActiveEvent, TimelineEvent, Unit, ViewState } from '../domain/timeline.ts'
+import { copyGroup, groupChangeCount, isGroupName } from '../domain/eventGroups.ts'
+import type { ActiveEvent, EventGroup, TimelineEvent, Unit, ViewState } from '../domain/timeline.ts'
 import type { EventLibraryRepository, TimelineRepository, ViewLocation } from './ports.ts'
 
 interface Dependencies {
@@ -18,11 +19,27 @@ export class InvalidCustomEventError extends Error {
   }
 }
 
+export class InvalidGroupNameError extends Error {
+  constructor() {
+    super('Enter a group name of 1 to 120 characters.')
+    this.name = 'InvalidGroupNameError'
+  }
+}
+
+export class UnsavedGroupChangesError extends Error {
+  constructor() {
+    super('Save or discard changes before switching groups.')
+    this.name = 'UnsavedGroupChangesError'
+  }
+}
+
 export class TimelineApplication {
   private activeEvents: ActiveEvent[]
   private customEvents: TimelineEvent[]
   private libraryEvents: TimelineEvent[] = []
   private viewState: ViewState
+  private eventGroups: EventGroup[]
+  private activeGroupId: string | null
   private dependencies: Dependencies
 
   constructor(dependencies: Dependencies) {
@@ -33,6 +50,8 @@ export class TimelineApplication {
     const centerDate = query.centerDate ?? stored.view.centerDate
     this.activeEvents = normalizeActiveEvents(stored.active)
     this.customEvents = stored.custom.map((event) => ({ ...event }))
+    this.eventGroups = stored.groups.map(copyGroup)
+    this.activeGroupId = stored.activeGroupId
     this.viewState = {
       unit: isUnit(unit) ? unit : '1w',
       centerDate: isDate(centerDate) ? centerDate : dependencies.today(),
@@ -42,6 +61,71 @@ export class TimelineApplication {
 
   get active(): readonly Readonly<ActiveEvent>[] { return this.activeEvents }
   get view(): Readonly<ViewState> { return this.viewState }
+  get groups(): EventGroup[] { return this.eventGroups.map(copyGroup) }
+  get activeGroup(): EventGroup | undefined {
+    const group = this.eventGroups.find((item) => item.id === this.activeGroupId)
+    return group ? copyGroup(group) : undefined
+  }
+  get groupChanges(): number {
+    const group = this.activeGroup
+    return group ? groupChangeCount(group.events, this.activeEvents) : 0
+  }
+
+  saveGroup(name: string, makeActive = true): EventGroup {
+    this.validateGroupName(name)
+    if (!this.activeEvents.length) throw new RangeError('Add an event before saving a group.')
+    const group: EventGroup = {
+      id: this.dependencies.createId(), name: name.trim(), savedAt: this.dependencies.today(),
+      events: this.activeEvents.map((event) => ({ ...event })), custom: this.groupCustomEvents(),
+    }
+    this.eventGroups = [...this.eventGroups, group]
+    if (makeActive) this.activeGroupId = group.id
+    this.saveGroups()
+    return copyGroup(group)
+  }
+
+  updateGroup(): void {
+    const group = this.requireActiveGroup()
+    this.eventGroups = this.eventGroups.map((item) => item.id === group.id ? {
+      ...item, savedAt: this.dependencies.today(), events: this.activeEvents.map((event) => ({ ...event })),
+      custom: this.groupCustomEvents(),
+    } : item)
+    this.saveGroups()
+  }
+
+  renameGroup(name: string): void {
+    this.validateGroupName(name)
+    const group = this.requireActiveGroup()
+    this.eventGroups = this.eventGroups.map((item) => item.id === group.id ? { ...item, name: name.trim() } : item)
+    this.saveGroups()
+  }
+
+  selectGroup(id: string, changes?: 'save' | 'discard'): void {
+    const group = this.eventGroups.find((item) => item.id === id)
+    if (!group) throw new RangeError(`Unknown event group: ${id}`)
+    if (id === this.activeGroupId) return
+    if (this.groupChanges) {
+      if (!changes) throw new UnsavedGroupChangesError()
+      if (changes === 'save') this.updateGroup()
+    }
+    this.activeGroupId = id
+    this.restoreGroup(group)
+  }
+
+  discardGroupChanges(): void { this.restoreGroup(this.requireActiveGroup()) }
+
+  leaveGroup(): void {
+    this.requireActiveGroup()
+    this.activeGroupId = null
+    this.saveGroups()
+  }
+
+  deleteGroup(): void {
+    const group = this.requireActiveGroup()
+    this.eventGroups = this.eventGroups.filter((item) => item.id !== group.id)
+    this.activeGroupId = null
+    this.saveGroups()
+  }
 
   eventById(id: string): TimelineEvent | undefined {
     const event = this.customEvents.find((item) => item.id === id) ??
@@ -149,6 +233,34 @@ export class TimelineApplication {
   flush(): void {
     this.dependencies.repository.saveView(this.viewState)
     this.saveEvents()
+    this.saveGroups()
+  }
+
+  private validateGroupName(name: string): void {
+    if (!isGroupName(name)) throw new InvalidGroupNameError()
+  }
+
+  private requireActiveGroup(): EventGroup {
+    const group = this.eventGroups.find((item) => item.id === this.activeGroupId)
+    if (!group) throw new RangeError('No event group is active.')
+    return group
+  }
+
+  private groupCustomEvents(): TimelineEvent[] {
+    return this.customEvents.filter((event) => this.activeEvents.some((item) => item.eventId === event.id))
+      .map((event) => ({ ...event }))
+  }
+
+  private restoreGroup(group: EventGroup): void {
+    const missing = group.custom.filter((event) => !this.customEvents.some((item) => item.id === event.id))
+    this.customEvents = [...this.customEvents, ...missing.map((event) => ({ ...event }))]
+    this.activeEvents = normalizeActiveEvents(group.events)
+    this.saveEvents()
+    this.saveGroups()
+  }
+
+  private saveGroups(): void {
+    this.dependencies.repository.saveGroups(this.eventGroups, this.activeGroupId)
   }
 
   private requireActiveEvent(id: string): ActiveEvent {

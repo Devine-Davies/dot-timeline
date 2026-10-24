@@ -8,6 +8,8 @@ import { LocalStorageTimelineRepository } from '../src/infrastructure/LocalStora
 const event = { id: 'one', name: 'One', start: '2026-01-01', end: '2026-12-31', color: '#123456', category: 'history', source: 'https://example.com/history' }
 const active = { eventId: 'one', color: '#abcdef', visible: false, order: 0 }
 const view = { unit: '1m', centerDate: '2026-10-23', panelOpen: false }
+const emptyGroups = { groups: [], activeGroupId: null }
+const group = { id: 'group-one', name: 'My group', savedAt: '2026-10-23', events: [active], custom: [] }
 
 function storage(initial = {}) {
   const values = new Map(Object.entries(initial))
@@ -25,7 +27,7 @@ test('localStorage preserves existing v1 keys and round trips custom, active, an
   repository.saveEvents([active], [custom])
   repository.saveView(view)
   assert.deepEqual([...values.keys()], ['dt:v1:active', 'dt:v1:custom', 'dt:v1:view'])
-  assert.deepEqual(repository.load(), { active: [active], custom: [custom], view })
+  assert.deepEqual(repository.load(), { active: [active], custom: [custom], view, ...emptyGroups })
   assert.deepEqual(warnings, [])
 })
 
@@ -46,11 +48,11 @@ test('invalid stored entries are reported while valid entries and false preferen
 test('malformed JSON and unexpected stored shapes produce defaults with a warning', () => {
   for (const raw of ['{', '42', '"text"', 'true']) {
     const { repository, warnings } = storage({ 'dt:v1:active': raw, 'dt:v1:custom': raw, 'dt:v1:view': raw })
-    assert.deepEqual(repository.load(), { active: [], custom: [], view: {} })
+    assert.deepEqual(repository.load(), { active: [], custom: [], view: {}, ...emptyGroups })
     assert.equal(warnings.length, 1)
   }
   const missing = storage()
-  assert.deepEqual(missing.repository.load(), { active: [], custom: [], view: {} })
+  assert.deepEqual(missing.repository.load(), { active: [], custom: [], view: {}, ...emptyGroups })
   assert.deepEqual(missing.warnings, [])
 })
 
@@ -61,11 +63,47 @@ test('unavailable storage is reported once, including blocked access to the stor
   ]) {
     const warnings = []
     const repository = new LocalStorageTimelineRepository(getStorage, (message) => warnings.push(message))
-    assert.deepEqual(repository.load(), { active: [], custom: [], view: {} })
+    assert.deepEqual(repository.load(), { active: [], custom: [], view: {}, ...emptyGroups })
     repository.saveEvents([active], [])
     repository.saveView(view)
+    repository.saveGroups([group], group.id)
     assert.equal(warnings.length, 1)
     assert.match(warnings[0], /this visit only/)
+  }
+})
+
+test('groups round trip separately from legacy keys, preserving snapshots and active association', () => {
+  const { repository, values, warnings } = storage()
+  const custom = { ...event, id: 'custom-one', category: 'personal' }
+  const snapshot = { ...group, events: [{ ...active, eventId: custom.id }], custom: [custom] }
+  repository.saveGroups([snapshot], snapshot.id)
+  assert.deepEqual([...values.keys()], ['dt:v1:groups'])
+  assert.deepEqual(repository.load(), { active: [], custom: [], view: {}, groups: [snapshot], activeGroupId: snapshot.id })
+  assert.deepEqual(warnings, [])
+  repository.saveGroups([snapshot], null)
+  assert.equal(repository.load().activeGroupId, null)
+})
+
+test('invalid groups and duplicate IDs are reported without losing valid groups', () => {
+  const invalid = [
+    null, { ...group, name: ' ' }, { ...group, savedAt: 'yesterday' }, { ...group, events: [null] },
+    { ...group, events: [active, active] }, { ...group, custom: [event] },
+    { ...group, custom: [{ ...event, category: 'personal', id: 'not-selected' }] },
+  ]
+  const { repository, warnings } = storage({
+    'dt:v1:groups': JSON.stringify({ groups: [group, ...invalid, group], activeGroupId: group.id }),
+  })
+  assert.deepEqual(repository.load().groups, [group])
+  assert.equal(repository.load().activeGroupId, group.id)
+  assert.equal(warnings.length, 1)
+})
+
+test('malformed group storage and dangling active group IDs produce warnings and safe defaults', () => {
+  for (const raw of ['{', '[]', '42', JSON.stringify({ groups: [group], activeGroupId: 'missing' })]) {
+    const { repository, warnings } = storage({ 'dt:v1:groups': raw })
+    const loaded = repository.load()
+    assert.equal(loaded.activeGroupId, null)
+    assert.equal(warnings.length, 1)
   }
 })
 

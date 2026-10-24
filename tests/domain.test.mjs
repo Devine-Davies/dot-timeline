@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import { DAY, MAX_TIME, MIN_TIME, dotEnd, dotStart, formatISO, indexForDate, parseDate, unitAnchor } from '../src/domain/dates.ts'
 import { isActiveEvent, isColor, isDate, isTimelineEvent, normalizeActiveEvents, resolveEvents, searchEvents } from '../src/domain/events.ts'
 import { UNIT_SPECS } from '../src/domain/timeline.ts'
+import { groupChangeCount, isEventGroup } from '../src/domain/eventGroups.ts'
 
 const event = (id, overrides = {}) => ({
   id, name: id, start: '2026-01-01', end: '2026-12-31', color: '#123456', category: 'history', ...overrides,
@@ -94,4 +95,22 @@ test('library queries combine case-insensitive search, categories, and historica
   assert.deepEqual(searchEvents(events, 'all', 'ROMAN').map((item) => item.id), ['ancient', 'recent'])
   assert.deepEqual(searchEvents(events, 'history', 'roman').map((item) => item.id), ['ancient'])
   assert.deepEqual(events.map((item) => item.id), ['recent', 'ancient', 'other'])
+})
+
+test('group changes compare content and relative order rather than shifted indices or colour case', () => {
+  const saved = [active('one', 0), active('two', 1), active('three', 2)]
+  assert.equal(groupChangeCount(saved, [active('two', 0), active('three', 1)]), 1)
+  assert.equal(groupChangeCount(saved, [active('new', 0), ...saved.map((item) => ({ ...item, order: item.order + 1 }))]), 1)
+  assert.equal(groupChangeCount(saved, [active('two', 0), active('one', 1), active('three', 2)]), 1)
+  assert.equal(groupChangeCount(saved, saved.map((item) => ({ ...item, color: '#ABCDEF' }))), 0)
+  assert.equal(groupChangeCount(saved, [active('two', 0, { color: '#000000' }), active('one', 1)]), 3)
+})
+
+test('saved groups validate nested selections and personal snapshots', () => {
+  const custom = event('personal', { category: 'personal' })
+  const group = { id: 'group', name: 'Personal', savedAt: '2026-10-23', events: [active(custom.id, 0)], custom: [custom] }
+  assert.equal(isEventGroup(group), true)
+  assert.equal(isEventGroup({ ...group, custom: [custom, custom] }), false)
+  assert.equal(isEventGroup({ ...group, custom: [event('personal')] }), false)
+  assert.equal(isEventGroup({ ...group, events: [active('other', 0)] }), false)
 })

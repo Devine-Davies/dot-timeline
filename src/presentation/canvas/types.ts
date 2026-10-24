@@ -4,6 +4,7 @@ export interface DotHit {
   index: number
   start: string
   end: string
+  today?: string
   events: ResolvedEvent[]
   x: number
   y: number
